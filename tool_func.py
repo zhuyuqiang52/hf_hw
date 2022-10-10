@@ -132,7 +132,9 @@ class position:
         return asset_val_df
 
 def max_drawdown(pfl_ret_df):
-    loc_end_int = np.argmax((np.maximum.accumulate(pfl_ret_df)-pfl_ret_df)/np.maximum.accumulate(pfl_ret_df))
+    drawdown_df = (np.maximum.accumulate(pfl_ret_df)-pfl_ret_df)/np.maximum.accumulate(pfl_ret_df)
+    drawdown_df.fillna(0,inplace=True)
+    loc_end_int = np.argmax(drawdown_df)
     loc_beg_int = np.argmax(pfl_ret_df.iloc[:loc_end_int,0])
     max_drawdown_float = pfl_ret_df.iloc[loc_beg_int,0]-pfl_ret_df.iloc[loc_end_int,0]
     return max_drawdown_float
@@ -286,8 +288,10 @@ def annualized_ror(d_ror_array)->float:
     d_ror_array = d_ror_array+1
     period_int = len(d_ror_array)
     accu_ror_float = np.multiply.accumulate(d_ror_array)[-1]
-    annualized_ror_float = np.power(accu_ror_float,252/period_int)[0]
-    return annualized_ror_float
+    annualized_ror_float = np.power(accu_ror_float,252/period_int)
+    annual_ror_float = annualized_ror_float-1
+
+    return annual_ror_float
 
 # factor cal func
 def momentum_factor(ror_df,window_int,centered_func=None):

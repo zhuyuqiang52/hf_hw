@@ -1,0 +1,221 @@
+<html>
+<head>
+<title>hw5.ipynb</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+.s0 { color: #808080; font-style: italic;}
+.s1 { color: #000080; font-weight: bold;}
+.s2 { color: #000000;}
+.s3 { color: #008000; font-weight: bold;}
+.s4 { color: #0000ff;}
+</style>
+</head>
+<body bgcolor="#ffffff">
+<table CELLSPACING=0 CELLPADDING=5 COLS=1 WIDTH="100%" BGCOLOR="#c0c0c0" >
+<tr><td><center>
+<font face="Arial, Helvetica" color="#000000">
+hw5.ipynb</font>
+</center></td></tr></table>
+<pre><span class="s0">#%% 
+</span><span class="s1">import </span>matplotlib.pyplot <span class="s1">as </span>plt
+<span class="s1">import </span>pandas <span class="s1">as </span>pd
+<span class="s1">import </span>yfinance <span class="s1">as </span>yf
+<span class="s1">from </span>tool_func <span class="s1">import </span>*
+<span class="s1">from </span>hw2 <span class="s1">import </span>w11,w12,w21,w22
+<span class="s1">from </span>scipy.optimize <span class="s1">import </span>minimize
+<span class="s0">#%% md 
+</span># (A) Extension 
+<span class="s0">#%% 
+</span>
+<span class="s0">#%% md 
+</span># download data 
+<span class="s0">#%% 
+</span><span class="s1">try</span>:
+    adj_close_sys_df = pd.read_csv(<span class="s3">r'E:\study\22fall\hf\data\hw5\SP500_components.csv'</span>,index_col=<span class="s4">0</span>)
+<span class="s1">except</span>:
+    <span class="s0">#sp500 components</span>
+    sp_assets = pd.read_html(
+            <span class="s3">'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'</span>)[<span class="s4">0</span>]
+    sym = sp_assets[<span class="s3">'Symbol'</span>].str.replace(<span class="s3">'.'</span>,<span class="s3">'-'</span>).tolist()
+    data = yf.download(tickers=sym,start = <span class="s3">'2021-08-09'</span>,end = <span class="s3">'2022-10-17'</span>)
+    adj_close_sys_df = data.iloc[:,:<span class="s4">503</span>]
+    adj_close_sys_df.columns = [i[<span class="s4">1</span>] <span class="s1">for </span>i <span class="s1">in </span>adj_close_sys_df.columns]
+    adj_close_sys_df.to_csv(<span class="s3">r'E:\study\22fall\hf\data\hw5\SP500_components.csv'</span>)
+
+<span class="s0">#discretionary stk tickers</span>
+discret_list = [<span class="s3">'ALB'</span>,<span class="s3">'XOM'</span>,<span class="s3">'TSLA'</span>,<span class="s3">'CVX'</span>]
+<span class="s0">#transform index</span>
+adj_close_sys_df.index = pd.to_datetime((adj_close_sys_df.index))
+adj_close_dis_df = adj_close_sys_df.loc[:,discret_list]
+<span class="s0">#%% md 
+</span># construct systematic portfolio 
+<span class="s0">#%% 
+</span>ror_sys_df = adj_close_sys_df/adj_close_sys_df.shift(<span class="s4">1</span>)-<span class="s4">1</span>
+ror_sys_df.dropna(axis=<span class="s4">0</span>,inplace=<span class="s1">True</span>,how = <span class="s3">'all'</span>)
+ror_sys_df.fillna(<span class="s4">0</span>,inplace=<span class="s1">True</span>)
+mom_centered_df = momentum_factor(ror_sys_df,<span class="s4">5</span>,centered_func=np.median)
+
+long_int = <span class="s4">100</span>
+short_int = <span class="s4">100</span>
+sys_pfl_weight_df = signal_sizing(mom_centered_df,<span class="s3">'signal'</span>,long_nums=long_int,short_nums=short_int)
+sys_pos = position(<span class="s4">2e6</span>,fix_notion_bool=<span class="s1">True</span>)
+sys_pos.order_execute(weights_df=sys_pfl_weight_df.iloc[[-<span class="s4">4</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],price_df=adj_close_sys_df.iloc[[-<span class="s4">4</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],brokerage_fee_rate_float=<span class="s4">0.0001</span>)
+sys_pos.order_execute(weights_df=sys_pfl_weight_df.iloc[[-<span class="s4">3</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],price_df=adj_close_sys_df.iloc[[-<span class="s4">3</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],brokerage_fee_rate_float=<span class="s4">0.0001</span>)
+sys_pos.order_execute(weights_df=sys_pfl_weight_df.iloc[[-<span class="s4">2</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],price_df=adj_close_sys_df.iloc[[-<span class="s4">2</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],brokerage_fee_rate_float=<span class="s4">0.0001</span>)
+sys_pos.order_execute(weights_df=sys_pfl_weight_df.iloc[[-<span class="s4">1</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],price_df=adj_close_sys_df.iloc[[-<span class="s4">1</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],brokerage_fee_rate_float=<span class="s4">0.0001</span>)
+sys_pos.order_execute(weights_df=sys_pfl_weight_df.iloc[[<span class="s4">0</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],price_df=adj_close_sys_df.iloc[[<span class="s4">0</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],brokerage_fee_rate_float=<span class="s4">0.0001</span>)
+sys_asset_val_df = sys_pos.daily_asset_val(price_df=adj_close_sys_df,all_price_bool=<span class="s1">True</span>)
+sys_daily_ret_df = sys_asset_val_df - sys_asset_val_df.shift(<span class="s4">1</span>)
+sys_daily_ret_df.dropna(axis=<span class="s4">0</span>,inplace=<span class="s1">True</span>)
+sys_asset_val_df.plot()
+plt.title(<span class="s3">'systemaic portfolio daily asset val'</span>)
+sys_daily_ret_df.plot()
+plt.title(<span class="s3">'systematic portfolio daily return'</span>)
+plt.show()
+<span class="s0">#%% md 
+</span># construct discretionary portfolio 
+<span class="s0">#%% 
+</span>ror_dis_df = adj_close_dis_df/adj_close_dis_df.shift(<span class="s4">1</span>)-<span class="s4">1</span>
+ror_dis_df.dropna(axis=<span class="s4">0</span>,inplace=<span class="s1">True</span>,how = <span class="s3">'all'</span>)
+ror_dis_df.fillna(<span class="s4">0</span>,inplace=<span class="s1">True</span>)
+dis_pfl_weight_df = pd.DataFrame(data = np.array([<span class="s4">0.5</span>,<span class="s4">0.5</span>,<span class="s4">0.5</span>*(w11+w21),<span class="s4">0.5</span>*(w12+w22)]).reshape(<span class="s4">1</span>,-<span class="s4">1</span>),columns = discret_list)
+dis_pfl_weight_df.index = [ror_dis_df.index[<span class="s4">0</span>]]
+dis_pfl_weight_df = dis_pfl_weight_df.reindex(ror_dis_df.index).ffill()
+dis_pos = position(<span class="s4">2e6</span>,fix_notion_bool=<span class="s1">True</span>)
+dis_pos.order_execute(weights_df=dis_pfl_weight_df.iloc[[-<span class="s4">4</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],price_df=adj_close_dis_df.iloc[[-<span class="s4">4</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],brokerage_fee_rate_float=<span class="s4">0.0001</span>)
+dis_pos.order_execute(weights_df=dis_pfl_weight_df.iloc[[-<span class="s4">3</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],price_df=adj_close_dis_df.iloc[[-<span class="s4">3</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],brokerage_fee_rate_float=<span class="s4">0.0001</span>)
+dis_pos.order_execute(weights_df=dis_pfl_weight_df.iloc[[-<span class="s4">2</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],price_df=adj_close_dis_df.iloc[[-<span class="s4">2</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],brokerage_fee_rate_float=<span class="s4">0.0001</span>)
+dis_pos.order_execute(weights_df=dis_pfl_weight_df.iloc[[-<span class="s4">1</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],price_df=adj_close_dis_df.iloc[[-<span class="s4">1</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],brokerage_fee_rate_float=<span class="s4">0.0001</span>)
+dis_pos.order_execute(weights_df=dis_pfl_weight_df.iloc[[<span class="s4">0</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],price_df=adj_close_dis_df.iloc[[<span class="s4">0</span>*<span class="s4">5</span>-<span class="s4">1</span>],:],brokerage_fee_rate_float=<span class="s4">0.0001</span>)
+dis_asset_val_df = dis_pos.daily_asset_val(price_df=adj_close_dis_df,all_price_bool=<span class="s1">True</span>)
+dis_daily_ret_df = dis_asset_val_df - dis_asset_val_df.shift(<span class="s4">1</span>)
+dis_daily_ret_df.dropna(axis=<span class="s4">0</span>,inplace=<span class="s1">True</span>)
+dis_asset_val_df.plot()
+plt.title(<span class="s3">'discretionary portfolio daily asset val'</span>)
+dis_daily_ret_df.plot()
+plt.title(<span class="s3">'discretionary portfolio daily return'</span>)
+plt.show()
+<span class="s0">#%% md 
+</span># For systematic portflio, 
+(1) We should consider alter the signal like change the period of data for momentum like switch 
+weekly return to monthly or even half-year return, which may show a better performance. 
+(2) Besides momentum, maybe we should consider reversal effects in stocks 
+(3) The market is suffering from high inflation and corresponding Fed's interest rate policy. Therefore, we should 
+look back in history when high inflation and raising interests rate operation happens to see how signals performed 
+back then. History may give us some insights into how to improve the strategy. 
+# For discretionary portflio, 
+(1) Discretionary portfolio's max_drawdown and VaR is bigger than systematic portfolio which shows that it is not well 
+hedged compared with systematic portfolio.We used market beta and momentum beta to hedge the discretionary portfolio. 
+In order to improve hedging performance, we may consider other risk factor like size to hedge or alter hedge ratio 
+dynamically on a weekly basis. 
+(2) 
+<span class="s0">#%% md 
+</span># (B) Selection 
+<span class="s0">#%% 
+# download SPY</span>
+<span class="s1">try</span>:
+    spy_close_df = pd.read_csv(<span class="s3">r'E:\study\22fall\hf\data\hw5\spy_close.csv'</span>,index_col=<span class="s4">0</span>)
+<span class="s1">except</span>:
+    data = yf.download(tickers=<span class="s3">'SPY'</span>,start = <span class="s3">'2021-08-09'</span>,end = <span class="s3">'2022-10-30'</span>)
+    spy_close_df = data.iloc[:,-<span class="s4">2</span>]
+    spy_close_df.to_csv(<span class="s3">r'E:\study\22fall\hf\data\hw5\spy_close.csv'</span>)
+
+spy_ror_df = spy_close_df/spy_close_df.shift(<span class="s4">1</span>)-<span class="s4">1</span>
+spy_ror_df.index = pd.to_datetime(spy_ror_df.index)
+spy_ror_df.columns = [<span class="s3">'SPY'</span>]
+spy_ror_df.dropna(axis=<span class="s4">0</span>,inplace=<span class="s1">True</span>)
+
+sys_ror_df = sys_asset_val_df/sys_asset_val_df.shift(<span class="s4">1</span>)-<span class="s4">1</span>
+sys_ror_df.dropna(axis=<span class="s4">0</span>,inplace=<span class="s1">True</span>)
+dis_ror_df = dis_asset_val_df/dis_asset_val_df.shift(<span class="s4">1</span>)-<span class="s4">1</span>
+dis_ror_df.dropna(axis=<span class="s4">0</span>,inplace=<span class="s1">True</span>)
+spy_ror_df = spy_ror_df.reindex(sys_ror_df.index)
+<span class="s0"># cal</span>
+sys_IR_float = IR(sys_ror_df.values,spy_ror_df.values)
+sys_beta_float = cal_beta(sys_ror_df.values,spy_ror_df.values)
+sys_sharp_float = sharp(sys_ror_df.values)
+sys_maxdrawdown_float = max_drawdown(sys_asset_val_df)
+sys_VaR_float = VaR(<span class="s4">0.75</span>,sys_daily_ret_df)
+sys_ETL_float = ETL(<span class="s4">0.75</span>,sys_daily_ret_df)
+sys_annual_ror_float = annualized_ror(sys_ror_df.values.copy())
+dis_IR_float = IR(dis_ror_df.values,spy_ror_df.values)
+dis_beta_float = cal_beta(dis_ror_df.values,spy_ror_df.values)
+dis_sharp_float = sharp(dis_ror_df.values)
+dis_maxdrawdown_float = max_drawdown(dis_asset_val_df)
+dis_VaR_float = VaR(<span class="s4">0.75</span>,dis_daily_ret_df)
+dis_ETL_float = ETL(<span class="s4">0.75</span>,dis_daily_ret_df)
+dis_annual_ror_float = annualized_ror(dis_ror_df.values.copy())
+stats_df = pd.DataFrame(data = [[sys_IR_float,sys_beta_float,sys_sharp_float,sys_maxdrawdown_float,sys_VaR_float,sys_ETL_float,sys_annual_ror_float],
+                                [dis_IR_float,dis_beta_float,dis_sharp_float,dis_maxdrawdown_float,dis_VaR_float,dis_ETL_float,dis_annual_ror_float]])
+stats_df = stats_df.T
+stats_df.index = [<span class="s3">'Annualized IR'</span>,<span class="s3">'Beta'</span>,<span class="s3">'Annualized Sharp'</span>,<span class="s3">'max drawdown'</span>,<span class="s3">'VaR'</span>,<span class="s3">'ETL'</span>,<span class="s3">'AnnualizedRor'</span>]
+stats_df.columns = [<span class="s3">'Systematic'</span>,<span class="s3">'Discretionary'</span>]
+print(stats_df)
+<span class="s0">#%% md 
+</span>Apparently, from IR and sharp, Discretionary portfolio's performance is much better than Systematic portfolio right now. 
+However, systematic portfolio's risk performance is better than discretionary portfolio in max_drawdown,VaR and ETL. 
+Though systematic portfolio's sharp is negative right now, if we extend its backtest period it may show a better 
+performance considering its risk performance. 
+In the end, I would still choose discretionary portfolio since I don't think weekly momentum signal is good signal right now. 
+<span class="s0">#%% md 
+</span>
+<span class="s0">#%% md 
+</span># (C) Trading Recommendation 
+I highly recommend we trade discretionary portfolio. Though it has flaws in risk performance, I still believe that oil 
+and lithium will be the hotest inhvestment sector under current situation, both economically and politically. On the 
+other side, I think its relative high risk is due to inappropriate hedging choice, which can be solved or at least eased 
+if we use solutions mentioned in (A) 
+<span class="s0">#%% md 
+</span># (D) Allocation 
+<span class="s0">#%% cal corr between the two strategies 
+</span>strat_corr_float = sys_ror_df.corrwith(dis_ror_df)[<span class="s4">0</span>]
+print(<span class="s3">f'correlationship between these two strategies: </span><span class="s1">{</span>strat_corr_float<span class="s1">}</span><span class="s3">'</span>)
+<span class="s0">#first trial: use quais-Netwon optimization to maximize portfolio's IR</span>
+<span class="s0">#%% 
+#objective function</span>
+<span class="s0"># it is basically a simplified mean variance optimization loss function with weights over VaR and change mean(return) to IR to maximize IR.</span>
+<span class="s1">def </span>obj_IR(w0_float):
+    sys_ror_array = sys_ror_df.values.reshape(-<span class="s4">1</span>,<span class="s4">1</span>)
+    dis_ror_array = dis_ror_df.values.reshape(-<span class="s4">1</span>,<span class="s4">1</span>)
+    pfl_ror_array = w0_float*sys_ror_array+(<span class="s4">1</span>-w0_float)*dis_ror_array
+    pfl_std_float = np.std(pfl_ror_array)*np.sqrt(<span class="s4">252</span>)
+    VaR_float = VaR(<span class="s4">0.75</span>,pd.DataFrame(data = pfl_ror_array),period_int=<span class="s4">252</span>)
+    IR_float = IR(pfl_ror_array,spy_ror_df.values)
+    IR_float -= <span class="s4">4</span>*pfl_std_float <span class="s0">#punish volatlity</span>
+    IR_float += <span class="s4">4</span>*VaR_float <span class="s0">#punish VaR * weight</span>
+    <span class="s1">return </span>-IR_float
+
+<span class="s0">#BFGS optimize with w0+w1 =1, wi&gt;0 constrains</span>
+res = minimize(obj_IR,[<span class="s4">0.5</span>],bounds=[[<span class="s4">0</span>,<span class="s4">1</span>]])
+w0 = res.x[<span class="s4">0</span>]
+print(<span class="s3">f'Systematic portfolio&quot;s weight:</span><span class="s1">{</span>w0<span class="s1">}</span><span class="s3">, Discretionary portfolio&quot;s weight: </span><span class="s1">{</span><span class="s4">1</span>-w0<span class="s1">}</span><span class="s3">'</span>)
+pfl_ror_df = w0*sys_ror_df+(<span class="s4">1</span>-w0)*dis_ror_df
+pfl_asset_val_df = w0*sys_asset_val_df+(<span class="s4">1</span>-w0)*dis_asset_val_df
+pfl_daily_ret_df = (pfl_asset_val_df-pfl_asset_val_df.shift(<span class="s4">1</span>)).dropna(axis=<span class="s4">0</span>)
+<span class="s0">#plot</span>
+pfl_asset_val_df.plot()
+plt.title(<span class="s3">'combined portfolio daily asset value'</span>)
+plt.show()
+pfl_daily_ret_df.plot()
+plt.title(<span class="s3">'combined portfolio daily return'</span>)
+plt.show()
+<span class="s0">#cal statsitics</span>
+pfl_IR_float = IR(pfl_ror_df.values,spy_ror_df.values)
+pfl_beta_float = cal_beta(pfl_ror_df.values,spy_ror_df.values)
+pfl_sharp_float = sharp(pfl_ror_df.values)
+pfl_maxdrawdown_float = max_drawdown(pfl_asset_val_df)
+pfl_VaR_float = VaR(<span class="s4">0.75</span>,pfl_daily_ret_df)
+pfl_ETL_float = ETL(<span class="s4">0.75</span>,pfl_daily_ret_df)
+pfl_annual_ror_float = annualized_ror(pfl_ror_df.values.copy())
+stats_df.loc[:,<span class="s3">'portfolio'</span>] = [pfl_IR_float,pfl_beta_float,pfl_sharp_float,pfl_maxdrawdown_float,pfl_VaR_float,pfl_ETL_float,pfl_annual_ror_float]
+print(stats_df)
+<span class="s1">pass</span>
+
+
+<span class="s0">#%% md 
+</span># (E) Fund Structure 
+(1) I think our strategy's capacity's is not very large. Therefore, we should not consider complicated fund structure like Master-feeder or mini-master to minimize tax cost to cater to foreign investors or US tax-exempt investors but just set up a domestic fund focusing on U.S. taxable investors in Delaware. 
+(2) As to the fee structure, I think we should employ the mode of management fee (2%) applying to AUM and performance fee(20%) applying to assets' appreciation. 
+(3)</pre>
+</body>
+</html>
