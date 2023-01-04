@@ -25,14 +25,17 @@ class position:
         self.long_val_float = 0
         self.long_val_list = []
         self.cover_dates_list = []
+        self.cost_df = pd.DataFrame(columns=['brokerage_fee','stock_loan_fee','capital_gain_tax'])
     def asset_val(self,price_df,fix_notion_bool:bool):
         price_array = price_df.reindex(columns = self.position.columns).fillna(0).values
         cur_val_array = self.position.iloc[-1,:].values*price_array
         val_chg_float = np.sum(cur_val_array)-np.sum(self.last_val_array)
         #tax
         if val_chg_float > 41675 and val_chg_float<459750:
+            self.cost_df.loc[price_df.index[0], :] = [0, 0, 0.15 * val_chg_float]
             val_chg_float = (1-0.15)*val_chg_float
         elif val_chg_float>459750:
+            self.cost_df.loc[price_df.index[0], :] = [0, 0, 0.2 * val_chg_float]
             val_chg_float = (1-0.2)*val_chg_float
         self.gross_exposure_float = np.sum(np.abs(cur_val_array))
         self.asset_val_float = self.cash_float+self.long_val_float+self.ret_left+self.proceed_from_short_sale+val_chg_float
@@ -48,7 +51,7 @@ class position:
                       slippage_rate_float=0.0008,
                       brokerage_fee_rate_float = 0.0001,
                       stock_loan_fee_rate_float = 0.0001,
-                      proceed_interest_rate_float=0.03,
+                      proceed_interest_rate_float=0.01,
                       cover = False):
         if self.position.shape[0]>0:
             last_position_df = self.position.iloc[[-1],:]
@@ -56,6 +59,7 @@ class position:
         execute_price_array = price_df.values*(1+np.random.normal(slippage_rate_float,0.0001,size=price_df.shape[1]))
         execute_price_array = np.nan_to_num(execute_price_array,nan=0.0)# suppose slippage follow a normal distribution
         execute_price_df = pd.DataFrame(execute_price_array,index = price_df.index,columns = price_df.columns)
+
         # update asset val
         if self.position.shape[0] >= 1:
             self.asset_val(execute_price_df, self.fix_notion_bool)
@@ -70,6 +74,7 @@ class position:
             else:
                 exposure_weighted_df = self.asset_val_float*(1-2*brokerage_fee_rate_float)*abs_weight_df*np.sign(weights_df.values)
             exposure_weighted_df = exposure_weighted_df.fillna(0)   # multiply original sign to distinguish long/short exposure
+            #per_cent_float = exposure_weighted_df.abs().iloc[0,-1]/exposure_weighted_df.iloc[:,:-1].abs().sum(axis=1)
             shares_df = np.floor_divide(exposure_weighted_df,execute_price_array*(1+(brokerage_fee_rate_float+stock_loan_fee_rate_float)/2))
         elif cover:
             #for cover
@@ -80,7 +85,6 @@ class position:
         else:
             shares_increment_df = shares_df
         shares_increment_df.fillna(0,inplace=True)
-        shares_increment_array = shares_increment_df.values
         #update last val array
         val_array = shares_increment_df.values * execute_price_df.reindex(columns = shares_increment_df.columns).fillna(0).values
         self.last_val_array = val_array
@@ -108,8 +112,10 @@ class position:
             stock_loan_fee_float = self.proceed_from_short_sale_list[-2]*(np.power(1+stock_loan_fee_rate_float-proceed_interest_rate_float,day_gap_int/252)-1) # stock loan fee - proceed interest
             #subtract cost
             self.cash_float -= stock_loan_fee_float+brokerage_fee_float
+            self.cost_df.loc[price_df.index[0]] = [brokerage_fee_float,stock_loan_fee_float,0]
         else:
             brokerage_fee_float = np.abs(val_array).sum() * brokerage_fee_rate_float
+            self.cost_df.loc[price_df.index[0]] = [brokerage_fee_float, 0, 0]
             # subtract cost
             self.cash_float -= brokerage_fee_float
         self.asset_val_float = self.long_val_float+self.proceed_from_short_sale+self.cash_float+self.ret_left
@@ -117,9 +123,6 @@ class position:
         self.cash_list.append(self.cash_float)
 
     def cover(self,price_df):
-        shares_df = self.position.iloc[[-1],:]
-        shares_df.iloc[0,:] = [0]*shares_df.shape[1]
-        shares_df.index = price_df.index
         self.order_execute(cover=True,price_df = price_df)
     def accu_ret_plot(self):
         asset_val_array = np.array(self.asset_list)-self.init_exposure_float
@@ -140,6 +143,7 @@ class position:
         share_df = self.position.reindex(price_sub_df.index).ffill() #previous val fill
         price_sub_df = price_sub_df.reindex(columns = share_df.columns)
         val_df = share_df*price_sub_df
+        val_df.to_csv('Position_Val.csv')
         if len(self.cover_dates_list)>0:
             #sepearely cal accumulate val chg
             sub_val_chg_list = []
@@ -223,9 +227,8 @@ def IR(pfl_r_array:np.array,bmk_r_array:np.array,annualized_bool=True)->float:
 
 def sharp(ror_d_array,annualized_bool=True):
     ror_d_array = ror_d_array.reshape(-1,1)
-    ror_y_float = np.exp(np.log(1+ror_d_array).sum() / (len(ror_d_array)/252))-1
-    std_y_float = np.std(ror_d_array)*np.sqrt(252)
-    return (ror_y_float-0.03319)/std_y_float
+    std_y_float = np.std(ror_d_array)
+    return np.mean(ror_d_array-ror_10_treasure_float/252)/std_y_float*np.sqrt(252)
 
 def IC_analysis(factor_df,ror_df,method_str = 'pearson'):
     factor_df.dropna(axis=0,inplace=True,how='all')
@@ -240,7 +243,11 @@ def IC_analysis(factor_df,ror_df,method_str = 'pearson'):
     IC_IR_float = IC_mean_float/IC_std_float
     IC_pos_rate_float = len(corrs_array[corrs_array>0])/len(corrs_array)
     print(f'\nIC Analysis\nIC_mean: {IC_mean_float},\nIC_std: {IC_std_float},\nIC_IR: {IC_IR_float},\n(IC>0)%: {IC_pos_rate_float}')
-
+def vol(ror_df,annualized = True):
+    vol_float = ror_df.std().values
+    if annualized:
+        vol_float *= np.sqrt(252)
+    return  vol_float[0]
 def factor_ret(factor_df,ror_df,chg_period_int = 20):
     factor_df.dropna(axis=0, inplace=True, how='all')
     #20 days accumulate ror
@@ -309,8 +316,8 @@ def factor_ror(factor_df,ror_df,chg_period_int = 20)->pd.DataFrame():
     return factor_ror_df
 
 def cal_beta(stk_ror_array,bmk_ror_array)->float:
-    X_array = sm.add_constant((bmk_ror_array - ror_10_treasure_float).reshape(-1, 1))
-    y_array = (stk_ror_array - ror_10_treasure_float).reshape(-1, 1)
+    X_array = sm.add_constant(bmk_ror_array.reshape(-1, 1))
+    y_array = stk_ror_array .reshape(-1, 1)
     model = sm.OLS(y_array, X_array)
     result = model.fit()
     beta_float = result.params[1]
@@ -338,8 +345,8 @@ def annualized_ror(d_ror_array)->float:
 def momentum_factor(ror_df,window_int,centered_func=None):
     #centered func can be any numpy func
     ror_df = np.log(ror_df+1)
-    momentum_factor_df = np.exp(ror_df.rolling(window_int,axis=0).sum())-1
-    momentum_factor_df.dropna(axis=0,inplace=True)
+    momentum_factor_df = np.exp(ror_df.rolling(window_int,axis=0,min_periods = 1).sum())-1
+    momentum_factor_df.dropna(axis=0,how='all',inplace=True)
     if centered_func is not None:
         subtract_val_df = momentum_factor_df.apply(axis=1,func=centered_func,result_type='broadcast')
         momentum_factor_centered_df = momentum_factor_df - subtract_val_df
@@ -382,10 +389,19 @@ def signal_weight(factor_df,long_nums = None,short_nums = None):
     return factor_weight_df
 
 def equal_weight(signal_df):
-    value_count_df = signal_df.value_counts()
-    pos_count_int,neg_count_int = value_count_df[1],value_count_df[-1]
-    signal_df[signal_df>0] = signal_df[signal_df>0]/pos_count_int
-    signal_df[signal_df<0] = signal_df[signal_df<0]/neg_count_int
+    value_count_df = signal_df.T.value_counts()
+    try:
+        pos_count_int = value_count_df[1]
+    except:
+        pos_count_int = 0
+    try:
+        neg_count_int = value_count_df[-1]
+    except:
+        neg_count_int = 0
+    if pos_count_int>0:
+        signal_df[signal_df>0] = signal_df[signal_df>0]/pos_count_int
+    if neg_count_int>0:
+        signal_df[signal_df<0] = signal_df[signal_df<0]/neg_count_int
     return signal_df
 
 def signal_sizing(factor_df,method_str = 'signal',long_nums = None,short_nums = None):
