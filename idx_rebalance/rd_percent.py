@@ -1,15 +1,14 @@
 import pandas as pd
 
 path_str = r'C:\Users\zhuyu\PycharmProjects\hf_hw\idx_rebalance\data\rd_idx'
-r1000_path_str = r'C:\Users\zhuyu\PycharmProjects\hf_hw\idx_rebalance\data\r1000'
+r1000_path_str = r'C:\Users\zhuyu\PycharmProjects\hf_hw\idx_rebalance\data\preRankDayTop3k'
 outsiders_3k = []
 outsiders_1k = []
 outsiders_1k_to_3k = []
-years = list(range(2010,2023))
-years.remove(2011)
+years = list(range(2000,2018))
 for year in years:
-    rd_df = pd.read_excel(path_str+'\\'+str(int(year))+'rankday.xlsx',header=2).sort_values('Market Cap',ascending=False)
-    idx_df = pd.read_excel(r1000_path_str+r'\RIY'+str(int(year))+'.xlsx')
+    idx_df = pd.read_excel(r1000_path_str+'\\'+str(int(year))+'rankday.xlsx',header=2).sort_values('Market Cap',ascending=False)
+    rd_df = pd.read_excel(r1000_path_str+'\\'+str(int(year))+'PreFriday9.xlsx',header=2).sort_values('Market Cap',ascending=False)
 
     rd_ticker_list = rd_df['Ticker'].tolist()
     rd_tk_list = []
@@ -22,7 +21,10 @@ for year in years:
             continue
         rd_tk_list.append(r_tk_sp[0])
     for i_ticker in idx_ticker_list:
-        i_tk_sp = i_ticker.split(' ')
+        try:
+            i_tk_sp = i_ticker.split(' ')
+        except:
+            continue
         idx_list.append(i_tk_sp[0])
     count = 0
     idx_3k_list = idx_list.copy()
@@ -45,10 +47,11 @@ for year in years:
     dif_1k_3k = set(idx_1k_list).difference(set(idx_3k_list))
     outsiders_1k_to_3k.append(dif_1k_3k)
     print(f"out top 1000 {year} percent: {count}/{len(idx_ticker_list)}: {count/len(idx_ticker_list)}\n")
+
 outsiders_1k_df = pd.DataFrame(outsiders_1k,index=years)
 outsiders_3k_df = pd.DataFrame(outsiders_3k,index=years)
 outsiders_1k_to_3k_df = pd.DataFrame(outsiders_1k_to_3k,index = years)
-outsiders_3k_df.to_excel('outsiders_3k.xlsx')
+'''outsiders_3k_df.to_excel('outsiders_3k.xlsx')
 outsiders_1k_df.to_excel('outsiders_1k.xlsx')
-outsiders_1k_to_3k_df.to_excel('outsiders_1k_to_3k.xlsx')
+outsiders_1k_to_3k_df.to_excel('outsiders_1k_to_3k.xlsx')'''
 pass
